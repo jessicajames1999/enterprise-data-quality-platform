@@ -1,0 +1,5 @@
+# Airflow requirements for Great Expectations integration
+apache-airflow==2.7.3
+great-expectations==0.18.8
+great-expectations-provider==0.2.7
+apache-airflow-providers-google==10.10.1
