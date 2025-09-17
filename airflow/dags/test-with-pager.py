@@ -140,15 +140,15 @@ def validate_transformed_tables(**context):
         
         # Check if any regions in staging are not in the allowed list
         region_query = f"""
-        SELECT DISTINCT Region
+        SELECT DISTINCT region_name
         FROM `chicory-mds.chicory_mds_staging.stg_territory`
-        WHERE Region NOT IN ({','.join([f"'{r}'" for r in allowed_regions])})
+        WHERE region_name NOT IN ({','.join([f"'{r}'" for r in allowed_regions])})
         """
-        
+
         invalid_regions_df = client.query(region_query).to_dataframe()
-        
+
         if len(invalid_regions_df) > 0:
-            invalid_region_names = invalid_regions_df['Region'].tolist()
+            invalid_region_names = invalid_regions_df['region_name'].tolist()
             print(f"VALIDATION FAILURE: Found {len(invalid_regions_df)} unauthorized regions: {invalid_region_names}")
             print(f"Allowed regions: {allowed_regions}")
             validation_results.append(("region_whitelist", False))
@@ -156,7 +156,7 @@ def validate_transformed_tables(**context):
         else:
             print(f"All regions are authorized")
             validation_results.append(("region_whitelist", True))
-            
+
     except Exception as e:
         print(f"region_whitelist validation failed: {e}")
         validation_results.append(("region_whitelist", False))
@@ -185,7 +185,8 @@ def validate_transformed_tables(**context):
             'error': f"Validation failed: {len(validation_results) - passed_count} out of {len(validation_results)} tests failed",
             'failed_validations': failed_validations,
             'timestamp': datetime.now().isoformat(),
-            'dag_run_id': context.get('dag_run', {}).get('run_id', 'unknown')
+            'dag_run_id': context.get('dag_run').run_id if context.get('dag_run') else 'unknown'
+
         }
         
         alert_result = send_pagerduty_alert(error_details)
