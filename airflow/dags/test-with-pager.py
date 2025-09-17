@@ -197,7 +197,7 @@ def validate_transformed_tables(**context):
 
 # DAG definition
 dag = DAG(
-    'working_bq_dbt_validation_pipeline_testing',
+    'working_bq_dbt_validation_pipeline_testing_new',
     default_args={
         'owner': 'data-team',
         'start_date': datetime(2024, 1, 1),
