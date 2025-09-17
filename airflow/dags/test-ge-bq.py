@@ -4,27 +4,45 @@ from airflow.operators.python import PythonOperator
 from airflow.providers.google.cloud.hooks.bigquery import BigQueryHook
 
 def validate_raw_tables_with_ge():
-    """Validate raw AdventureWorks tables using Great Expectations only"""
+    """Validate raw AdventureWorks tables using Great Expectations with proper auth"""
     
     import great_expectations as gx
     import os
+    from sqlalchemy import create_engine
     
     print("=== Great Expectations Raw Data Validation ===")
     
     # Change to GE directory
     os.chdir('/opt/airflow/great_expectations')
     
+    # Get BigQuery credentials from Airflow connection
+    hook = BigQueryHook(gcp_conn_id='bigquery_default')
+    credentials = hook.get_credentials()
+    project_id = hook.project_id or "chicory-mds"
+    
+    print(f"Using BigQuery project: {project_id}")
+    
+    # Create SQLAlchemy engine with proper credentials
+    from google.cloud import bigquery
+    client = bigquery.Client(credentials=credentials, project=project_id)
+    
+    # Build connection string with credentials
+    connection_string = f"bigquery://{project_id}/raw_adventureworks"
+    
     # Get GE context
     context = gx.get_context()
     print("Great Expectations context initialized")
     
-    # Configure BigQuery datasource
+    # Configure BigQuery datasource with proper credentials
     datasource_config = {
         "name": "bigquery_raw_datasource",
         "class_name": "Datasource",
         "execution_engine": {
             "class_name": "SqlAlchemyExecutionEngine",
-            "connection_string": "bigquery://chicory-mds/raw_adventureworks"
+            "connection_string": connection_string,
+            "create_engine_kwargs": {
+                "credentials": credentials
+            }
         },
         "data_connectors": {
             "default_runtime_data_connector": {
@@ -122,7 +140,6 @@ def validate_raw_tables_with_ge():
     
     print(f"\n=== Great Expectations Validation Summary ===")
     print(f"Tests passed: {len(passed_tests)}/{len(all_tests)}")
-    print(f"Great Expectations framework: SUCCESS")
     
     if len(passed_tests) == len(all_tests):
         print("All Great Expectations validations PASSED")
@@ -134,22 +151,22 @@ def validate_raw_tables_with_ge():
 
 # DAG definition
 dag = DAG(
-    'test_great_expectations_bq_only',
+    'test_ge_bq_fixed_auth',
     default_args={
         'owner': 'data-team',
         'start_date': datetime(2024, 1, 1),
         'retries': 1,
         'retry_delay': timedelta(minutes=5)
     },
-    description='Test Great Expectations on BigQuery raw data only - no fallback',
+    description='Test GE with fixed BigQuery authentication',
     schedule_interval=None,
     catchup=False,
-    tags=['great-expectations', 'bigquery', 'test', 'no-fallback']
+    tags=['great-expectations', 'bigquery', 'fixed-auth']
 )
 
-# Single task: Test GE on raw BigQuery data
+# Single task: Test GE with proper auth
 test_ge_validation = PythonOperator(
-    task_id='test_ge_raw_validation',
+    task_id='test_ge_fixed_auth',
     python_callable=validate_raw_tables_with_ge,
     dag=dag
 )
