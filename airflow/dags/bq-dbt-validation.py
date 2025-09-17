@@ -46,7 +46,7 @@ def validate_transformed_tables():
     # Test 1: stg_territory table
     print("\n--- stg_territory validation ---")
     try:
-        stg_territory_count = int(client.query("SELECT COUNT(*) as count FROM `chicory-mds.chicory_mds_dbt_staging.stg_territory`").to_dataframe().iloc[0]['count'])
+        stg_territory_count = int(client.query("SELECT COUNT(*) as count FROM `chicory-mds.chicory_mds_staging.stg_territory`").to_dataframe().iloc[0]['count'])
         print(f"stg_territory: {stg_territory_count} rows")
         territory_passed = stg_territory_count > 0
         validation_results.append(("stg_territory", territory_passed))
@@ -58,7 +58,7 @@ def validate_transformed_tables():
     # Test 2: stg_salesperson table
     print("\n--- stg_salesperson validation ---")
     try:
-        stg_salesperson_count = int(client.query("SELECT COUNT(*) as count FROM `chicory-mds.chicory_mds_dbt_staging.stg_salesperson`").to_dataframe().iloc[0]['count'])
+        stg_salesperson_count = int(client.query("SELECT COUNT(*) as count FROM `chicory-mds.chicory_mds_staging.stg_salesperson`").to_dataframe().iloc[0]['count'])
         print(f"stg_salesperson: {stg_salesperson_count} rows")
         salesperson_passed = stg_salesperson_count > 0
         validation_results.append(("stg_salesperson", salesperson_passed))
@@ -70,7 +70,7 @@ def validate_transformed_tables():
     # Test 3: sales_performance marts table
     print("\n--- sales_performance validation ---")
     try:
-        sales_performance_count = int(client.query("SELECT COUNT(*) as count FROM `chicory-mds.chicory_mds_dbt_marts.sales_performance`").to_dataframe().iloc[0]['count'])
+        sales_performance_count = int(client.query("SELECT COUNT(*) as count FROM `chicory-mds.chicory_mds_marts.mart_sales_perfromance_dashboard`").to_dataframe().iloc[0]['count'])
         print(f"sales_performance: {sales_performance_count} rows")
         performance_passed = sales_performance_count > 0
         validation_results.append(("sales_performance", performance_passed))
