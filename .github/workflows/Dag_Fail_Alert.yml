@@ -23,8 +23,9 @@ jobs:
             echo "INCIDENT_KEY=test-incident-123" >> $GITHUB_ENV
             echo "ERROR_DETAILS={\"test\": \"manual trigger\", \"task\": \"test_validation\"}" >> $GITHUB_ENV
           else
-            PAYLOAD=$(echo '${{ toJson(github.event.client_payload) }}' | tr -d '\n')
-
+            PAYLOAD=$(cat << 'PAYLOAD_EOF'
+            ${{ toJson(github.event.client_payload) }}
+            PAYLOAD_EOF)
             echo "Raw payload: $PAYLOAD"
             
             if echo "$PAYLOAD" | jq -e '.pipeline_failure' > /dev/null; then
@@ -54,15 +55,42 @@ jobs:
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${{ secrets.AGENT_API_KEY }}" \
             -d "{
-              \"agent_id\": \"${{ secrets.AGENT_ID }}\",
-              \"message\": \"$ERROR_DETAILS\",
-              \"context\": \"airflow_pipeline_failure\"
+              \"agent_name\": \"${{ secrets.AGENT_ID }}\",
+              \"input\": [{
+                \"parts\": [{
+                  \"content_type\": \"application/json\",
+                  \"content\": $(echo "$ERROR_DETAILS" | jq -c .)
+                }],
+                \"created_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+              }]
             }" \
             "${{ vars.AGENT_API_ENDPOINT }}" || echo '{"error": "Agent request failed"}')
           
-          echo "Agent analysis: $AGENT_RESPONSE"
+          echo "Agent response: $AGENT_RESPONSE"
           
-          ANALYSIS=$(echo "$AGENT_RESPONSE" | jq -r '.response // .message // .content // "Agent analysis not available"')
+          # Extract run_id and wait for completion
+          RUN_ID=$(echo "$AGENT_RESPONSE" | jq -r '.run_id')
+          
+          if [ "$RUN_ID" != "null" ] && [ -n "$RUN_ID" ]; then
+            echo "Waiting for agent run $RUN_ID to complete..."
+            for i in {1..30}; do
+              sleep 10
+              STATUS_RESPONSE=$(curl -s -X GET \
+                -H "Authorization: Bearer ${{ secrets.AGENT_API_KEY }}" \
+                "${{ vars.AGENT_API_ENDPOINT }}/$RUN_ID")
+              
+              STATUS=$(echo "$STATUS_RESPONSE" | jq -r '.status')
+              if [ "$STATUS" = "completed" ]; then
+                ANALYSIS=$(echo "$STATUS_RESPONSE" | jq -r '.output[0].parts[0].content')
+                break
+              elif [ "$STATUS" = "failed" ]; then
+                ANALYSIS="Agent run failed"
+                break
+              fi
+            done
+          else
+            ANALYSIS="Failed to start agent run"
+          fi
           
           cat << 'ANALYSIS_EOF' > analysis.md
           # Airflow Pipeline Failure Analysis
