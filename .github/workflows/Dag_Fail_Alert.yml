@@ -1,0 +1,81 @@
+name: PagerDuty Agent PR Creator
+
+on:
+  repository_dispatch:
+    types: [pagerduty-alert]
+
+jobs:
+  create-fix-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Send alert to agent and get response
+        id: agent-response
+        run: |
+          # Extract alert details from the webhook payload
+          ALERT_DETAILS='${{ toJson(github.event.client_payload) }}'
+          echo "Alert details: $ALERT_DETAILS"
+          
+          # Send to your agent API
+          AGENT_RESPONSE=$(curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.AGENT_API_KEY }}" \
+            -d "{
+              \"agent_id\": \"${{ vars.AGENT_ID }}\",
+              \"message\": \"Airflow pipeline failed with the following details: $ALERT_DETAILS. Please analyze the issue and provide a fix.\",
+              \"context\": \"airflow_pipeline_failure\"
+            }" \
+            "${{ vars.AGENT_API_ENDPOINT }}")
+          
+          echo "Agent response: $AGENT_RESPONSE"
+          
+          # Extract the fix content (adjust this based on your agent's response format)
+          FIX_CONTENT=$(echo "$AGENT_RESPONSE" | jq -r '.response // .message // .content')
+          
+          # Save to file for PR creation
+          echo "$FIX_CONTENT" > proposed_fix.md
+          
+          # Set outputs for next steps
+          echo "fix-available=true" >> $GITHUB_OUTPUT
+          echo "alert-description=${{ github.event.client_payload.description }}" >> $GITHUB_OUTPUT
+
+      - name: Create branch and PR
+        if: steps.agent-response.outputs.fix-available == 'true'
+        run: |
+          # Configure git
+          git config --local user.email "action@github.com"
+          git config --local user.name "PagerDuty Agent Bot"
+          
+          # Create new branch
+          BRANCH_NAME="fix/pagerduty-$(date +%s)"
+          git checkout -b "$BRANCH_NAME"
+          
+          # Add the proposed fix
+          git add proposed_fix.md
+          git commit -m "Fix for PagerDuty alert: ${{ steps.agent-response.outputs.alert-description }}"
+          
+          # Push branch
+          git push origin "$BRANCH_NAME"
+          
+          # Create PR using GitHub CLI
+          gh pr create \
+            --title "🚨 Auto-fix for PagerDuty Alert" \
+            --body "**Alert:** ${{ steps.agent-response.outputs.alert-description }}
+
+          **Agent Analysis & Proposed Fix:**
+          $(cat proposed_fix.md)
+
+          **Alert Details:**
+          \`\`\`json
+          ${{ toJson(github.event.client_payload) }}
+          \`\`\`
+
+          This PR was automatically created in response to a PagerDuty alert." \
+            --head "$BRANCH_NAME" \
+            --base main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
