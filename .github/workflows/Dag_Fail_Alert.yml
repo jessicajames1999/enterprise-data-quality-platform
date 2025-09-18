@@ -23,9 +23,7 @@ jobs:
             echo "INCIDENT_KEY=test-incident-123" >> $GITHUB_ENV
             echo "ERROR_DETAILS={\"test\": \"manual trigger\", \"task\": \"test_validation\"}" >> $GITHUB_ENV
           else
-            PAYLOAD=$(cat << 'PAYLOAD_EOF'
-            ${{ toJson(github.event.client_payload) }}
-            PAYLOAD_EOF)
+            PAYLOAD=$(echo '${{ toJson(github.event.client_payload) }}' | tr -d '\n')
             echo "Raw payload: $PAYLOAD"
             
             if echo "$PAYLOAD" | jq -e '.pipeline_failure' > /dev/null; then
@@ -68,7 +66,6 @@ jobs:
           
           echo "Agent response: $AGENT_RESPONSE"
           
-          # Extract run_id and wait for completion
           RUN_ID=$(echo "$AGENT_RESPONSE" | jq -r '.run_id')
           
           if [ "$RUN_ID" != "null" ] && [ -n "$RUN_ID" ]; then
