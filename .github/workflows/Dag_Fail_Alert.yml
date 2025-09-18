@@ -5,6 +5,10 @@ on:
     types: [airflow-failure, test-curl]
   workflow_dispatch:
 
+permissions:
+  contents: write
+  pull-requests: write
+      
 jobs:
   create-fix-and-update-pagerduty:
     runs-on: ubuntu-latest
