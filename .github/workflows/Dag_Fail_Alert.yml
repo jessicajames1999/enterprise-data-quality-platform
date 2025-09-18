@@ -57,7 +57,7 @@ jobs:
               \"input\": [{
                 \"parts\": [{
                   \"content_type\": \"application/json\",
-                  \"content\": $(echo "$ERROR_DETAILS" | jq -c .)
+                  \"content\": $ERROR_DETAILS
                 }],
                 \"created_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
               }]
