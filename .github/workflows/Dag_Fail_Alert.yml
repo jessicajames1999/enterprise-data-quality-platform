@@ -3,6 +3,7 @@ name: PagerDuty Agent PR Creator
 on:
   repository_dispatch:
     types: [incident.triggered]
+  workflow_dispatch:  # Allows manual triggering
 
 jobs:
   create-fix-pr:
