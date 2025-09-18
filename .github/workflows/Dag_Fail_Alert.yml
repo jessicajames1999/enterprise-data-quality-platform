@@ -159,8 +159,7 @@ jobs:
             --body "$PR_BODY" \
             --head "$BRANCH_NAME" \
             --base main \
-            --label "airflow-failure,auto-fix,pagerduty:$INCIDENT_KEY" \
-            --output json | jq -r '.url')
+            --label "airflow-failure,auto-fix,pagerduty:$INCIDENT_KEY" )
           
           echo "PR created: $PR_URL"
           echo "PR_URL=$PR_URL" >> $GITHUB_ENV
