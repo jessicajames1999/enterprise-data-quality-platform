@@ -52,7 +52,7 @@ jobs:
           # Create properly formatted payload using jq
           PAYLOAD=$(jq -n \
             --arg agent_name "${{ secrets.AGENT_ID }}" \
-            --argjson content "$ERROR_DETAILS" \
+            --arg content "$ERROR_DETAILS" \
             --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             '{
               "agent_name": $agent_name,
