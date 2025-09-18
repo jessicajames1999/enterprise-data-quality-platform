@@ -129,42 +129,63 @@ jobs:
 
       - name: Create PR with fix
         if: steps.agent-response.outputs.analysis-ready == 'true'
-        run: |
-          git config --local user.email "airflow-bot@company.com"
-          git config --local user.name "Airflow Fix Bot"
-          
-          BRANCH_NAME="fix/airflow-failure-$(date +%s)"
-          git checkout -b "$BRANCH_NAME"
-          
-          git add analysis.md
-          git commit -m "Auto-fix for Airflow failure: $FAILED_TASK"
-          
-          git push origin "$BRANCH_NAME"
-          
-          PR_BODY="**Airflow Pipeline Failure Auto-Fix**
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            // Configure git
+            await exec.exec('git', ['config', '--local', 'user.email', 'airflow-bot@company.com']);
+            await exec.exec('git', ['config', '--local', 'user.name', 'Airflow Fix Bot']);
+            
+            // Create branch
+            const branchName = `fix/airflow-failure-${Date.now()}`;
+            await exec.exec('git', ['checkout', '-b', branchName]);
+            
+            // Add and commit files
+            await exec.exec('git', ['add', 'analysis.md']);
+            await exec.exec('git', ['commit', '-m', `Auto-fix for Airflow failure: ${process.env.FAILED_TASK}`]);
+            await exec.exec('git', ['push', 'origin', branchName]);
+            
+            // Read analysis file for PR body
+            const analysisContent = fs.readFileSync('analysis.md', 'utf8');
+            
+            const prBody = `**Airflow Pipeline Failure Auto-Fix**
 
-          **Failed Task:** $FAILED_TASK
-          **Error:** $PIPELINE_ERROR
-          **PagerDuty Incident:** $INCIDENT_KEY
+            **Failed Task:** ${process.env.FAILED_TASK}
+            **Error:** ${process.env.PIPELINE_ERROR}
+            **PagerDuty Incident:** ${process.env.INCIDENT_KEY}
 
-          **AI Agent Analysis:**
-          $(cat analysis.md)
+            **AI Agent Analysis:**
+            ${analysisContent}
 
-          <!-- PAGERDUTY_INCIDENT_KEY: $INCIDENT_KEY -->
+            <!-- PAGERDUTY_INCIDENT_KEY: ${process.env.INCIDENT_KEY} -->
 
-          This PR was automatically generated in response to an Airflow pipeline failure."
-          
-          PR_URL=$(gh pr create \
-            --title "Auto-fix: $FAILED_TASK Pipeline Failure" \
-            --body "$PR_BODY" \
-            --head "$BRANCH_NAME" \
-            --base main \
-            --label "airflow-failure,auto-fix,pagerduty:$INCIDENT_KEY" )
-          
-          echo "PR created: $PR_URL"
-          echo "PR_URL=$PR_URL" >> $GITHUB_ENV
+            This PR was automatically generated in response to an Airflow pipeline failure.`;
+            
+            // Create PR
+            const { data: pr } = await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Auto-fix: ${process.env.FAILED_TASK} Pipeline Failure`,
+              head: branchName,
+              base: 'main',
+              body: prBody
+            });
+            
+            // Add labels
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              labels: ['airflow-failure', 'auto-fix', `pagerduty:${process.env.INCIDENT_KEY}`]
+            });
+            
+            console.log(`PR created: ${pr.html_url}`);
+            core.exportVariable('PR_URL', pr.html_url);
         env:
           GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+
 
       - name: Update PagerDuty incident
         if: env.INCIDENT_KEY != 'test-incident-123' && env.INCIDENT_KEY != 'curl-test-123'
