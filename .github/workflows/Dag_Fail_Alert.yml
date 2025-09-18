@@ -23,7 +23,10 @@ jobs:
             echo "INCIDENT_KEY=test-incident-123" >> $GITHUB_ENV
             echo "ERROR_DETAILS={\"test\": \"manual trigger\", \"task\": \"test_validation\"}" >> $GITHUB_ENV
           else
-            PAYLOAD='${{ toJson(github.event.client_payload) }}'
+            PAYLOAD=$(cat << 'PAYLOAD_EOF'
+            ${{ toJson(github.event.client_payload) }}
+            PAYLOAD_EOF
+            )
             echo "Raw payload: $PAYLOAD"
             
             if echo "$PAYLOAD" | jq -e '.pipeline_failure' > /dev/null; then
@@ -68,19 +71,19 @@ jobs:
 
           ## Issue Summary
           ANALYSIS_EOF
-                    echo "**Pipeline Error:** $PIPELINE_ERROR" >> analysis.md
-                    echo "**Failed Task:** $FAILED_TASK" >> analysis.md
-                    echo "**PagerDuty Incident:** $INCIDENT_KEY" >> analysis.md
-                    echo "" >> analysis.md
-                    echo "## AI Agent Analysis" >> analysis.md
-                    echo "$ANALYSIS" >> analysis.md
-                    echo "" >> analysis.md
-                    echo "## Recommended Actions" >> analysis.md
-                    echo "Based on the analysis above, please review the proposed changes and merge if appropriate." >> analysis.md
-                    echo "" >> analysis.md
-                    echo "Generated automatically by GitHub Actions workflow." >> analysis.md
-                    
-                    echo "analysis-ready=true" >> $GITHUB_OUTPUT
+          echo "**Pipeline Error:** $PIPELINE_ERROR" >> analysis.md
+          echo "**Failed Task:** $FAILED_TASK" >> analysis.md
+          echo "**PagerDuty Incident:** $INCIDENT_KEY" >> analysis.md
+          echo "" >> analysis.md
+          echo "## AI Agent Analysis" >> analysis.md
+          echo "$ANALYSIS" >> analysis.md
+          echo "" >> analysis.md
+          echo "## Recommended Actions" >> analysis.md
+          echo "Based on the analysis above, please review the proposed changes and merge if appropriate." >> analysis.md
+          echo "" >> analysis.md
+          echo "Generated automatically by GitHub Actions workflow." >> analysis.md
+          
+          echo "analysis-ready=true" >> $GITHUB_OUTPUT
 
       - name: Create PR with fix
         if: steps.agent-response.outputs.analysis-ready == 'true'
