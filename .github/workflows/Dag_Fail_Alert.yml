@@ -70,6 +70,8 @@ jobs:
             }')
           
           echo "Payload created, sending to agent..."
+          echo "Debug - Generated payload: $PAYLOAD"
+
           
           AGENT_RESPONSE=$(curl -s -X POST \
             -H "Content-Type: application/json" \
