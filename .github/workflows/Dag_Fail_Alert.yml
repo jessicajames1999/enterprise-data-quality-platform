@@ -133,6 +133,7 @@ jobs:
         with:
           script: |
             const fs = require('fs');
+            const { exec } = require('@actions/exec');  // Add this line
             
             // Configure git
             await exec.exec('git', ['config', '--local', 'user.email', 'airflow-bot@company.com']);
