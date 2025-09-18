@@ -23,10 +23,8 @@ jobs:
             echo "INCIDENT_KEY=test-incident-123" >> $GITHUB_ENV
             echo "ERROR_DETAILS={\"test\": \"manual trigger\", \"task\": \"test_validation\"}" >> $GITHUB_ENV
           else
-            PAYLOAD=$(cat << 'PAYLOAD_EOF'
-            ${{ toJson(github.event.client_payload) }}
-            PAYLOAD_EOF
-            )
+            PAYLOAD=$(echo '${{ toJson(github.event.client_payload) }}' | tr -d '\n')
+
             echo "Raw payload: $PAYLOAD"
             
             if echo "$PAYLOAD" | jq -e '.pipeline_failure' > /dev/null; then
