@@ -1,12 +1,12 @@
-name: PagerDuty Agent PR Creator
+name: Airflow Failure Auto-Fix
 
 on:
   repository_dispatch:
-    types: [incident.triggered]
-  workflow_dispatch:  # Allows manual triggering
+    types: [airflow-failure, test-curl]
+  workflow_dispatch:
 
 jobs:
-  create-fix-pr:
+  create-fix-and-update-pagerduty:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -14,108 +14,132 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract PagerDuty incident data
-        id: extract-incident
+      - name: Extract failure data
+        id: extract-data
         run: |
-          # Extract incident details from PagerDuty webhook payload
-          INCIDENT_DATA='${{ toJson(github.event.client_payload) }}'
-          echo "PagerDuty incident data: $INCIDENT_DATA"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "PIPELINE_ERROR=Test pipeline failure" >> $GITHUB_ENV
+            echo "FAILED_TASK=test_validation" >> $GITHUB_ENV
+            echo "INCIDENT_KEY=test-incident-123" >> $GITHUB_ENV
+            echo "ERROR_DETAILS={\"test\": \"manual trigger\", \"task\": \"test_validation\"}" >> $GITHUB_ENV
+          else
+            PAYLOAD='${{ toJson(github.event.client_payload) }}'
+            echo "Raw payload: $PAYLOAD"
+            
+            if echo "$PAYLOAD" | jq -e '.pipeline_failure' > /dev/null; then
+              echo "PIPELINE_ERROR=$(echo "$PAYLOAD" | jq -r '.pipeline_failure.error')" >> $GITHUB_ENV
+              echo "FAILED_TASK=$(echo "$PAYLOAD" | jq -r '.pipeline_failure.task')" >> $GITHUB_ENV
+              echo "INCIDENT_KEY=$(echo "$PAYLOAD" | jq -r '.pagerduty_incident_key')" >> $GITHUB_ENV
+              echo "ERROR_DETAILS=$PAYLOAD" >> $GITHUB_ENV
+            else
+              echo "PIPELINE_ERROR=Curl test trigger" >> $GITHUB_ENV
+              echo "FAILED_TASK=test_curl_validation" >> $GITHUB_ENV
+              echo "INCIDENT_KEY=curl-test-123" >> $GITHUB_ENV
+              echo "ERROR_DETAILS=$PAYLOAD" >> $GITHUB_ENV
+            fi
+          fi
           
-          # Extract key fields from the incident (adjust based on actual PagerDuty payload structure)
-          INCIDENT_TITLE=$(echo "$INCIDENT_DATA" | jq -r '.incident.title // .title // "Unknown Incident"')
-          INCIDENT_DESCRIPTION=$(echo "$INCIDENT_DATA" | jq -r '.incident.description // .description // "No description available"')
-          SERVICE_NAME=$(echo "$INCIDENT_DATA" | jq -r '.incident.service.name // .service.name // "Unknown Service"')
-          INCIDENT_URL=$(echo "$INCIDENT_DATA" | jq -r '.incident.html_url // .html_url // ""')
-          
-          # Create structured alert data for the agent
-          ALERT_DETAILS=$(jq -n \
-            --arg title "$INCIDENT_TITLE" \
-            --arg description "$INCIDENT_DESCRIPTION" \
-            --arg service "$SERVICE_NAME" \
-            --arg url "$INCIDENT_URL" \
-            --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            '{
-              incident_title: $title,
-              incident_description: $description,
-              service_name: $service,
-              incident_url: $url,
-              timestamp: $timestamp,
-              source: "pagerduty_webhook"
-            }')
-          
-          echo "Formatted alert data: $ALERT_DETAILS"
-          
-          # Store for next steps
-          echo "INCIDENT_TITLE=$INCIDENT_TITLE" >> $GITHUB_ENV
-          echo "SERVICE_NAME=$SERVICE_NAME" >> $GITHUB_ENV
-          echo "ALERT_DETAILS=$ALERT_DETAILS" >> $GITHUB_ENV
+          echo "Extracted data:"
+          echo "PIPELINE_ERROR: $PIPELINE_ERROR"
+          echo "FAILED_TASK: $FAILED_TASK"
+          echo "INCIDENT_KEY: $INCIDENT_KEY"
 
-      - name: Send alert to agent and get response
+      - name: Send to agent for analysis
         id: agent-response
         run: |
-          echo "Sending alert to agent for analysis"
+          echo "Sending failure data to agent for analysis..."
           
-          # Send alert data to agent API
           AGENT_RESPONSE=$(curl -s -X POST \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${{ secrets.AGENT_API_KEY }}" \
             -d "{
               \"agent_id\": \"${{ secrets.AGENT_ID }}\",
-              \"message\": \"$ALERT_DETAILS\",
-              \"context\": \"pagerduty_alert\"
+              \"message\": \"$ERROR_DETAILS\",
+              \"context\": \"airflow_pipeline_failure\"
             }" \
-            "${{ vars.AGENT_API_ENDPOINT }}")
+            "${{ vars.AGENT_API_ENDPOINT }}" || echo '{"error": "Agent request failed"}')
           
-          echo "Agent response: $AGENT_RESPONSE"
+          echo "Agent analysis: $AGENT_RESPONSE"
           
-          # Extract the fix content (adjust based on your agent's response format)
-          FIX_CONTENT=$(echo "$AGENT_RESPONSE" | jq -r '.response // .message // .content // "No response from agent"')
+          ANALYSIS=$(echo "$AGENT_RESPONSE" | jq -r '.response // .message // .content // "Agent analysis not available"')
           
-          # Save to file for PR creation
-          echo "$FIX_CONTENT" > proposed_fix.md
-          
-          # Set outputs for next steps
-          echo "fix-available=true" >> $GITHUB_OUTPUT
+          cat << 'ANALYSIS_EOF' > analysis.md
+          # Airflow Pipeline Failure Analysis
 
-      - name: Create branch and PR
-        if: steps.agent-response.outputs.fix-available == 'true'
+          ## Issue Summary
+          ANALYSIS_EOF
+                    echo "**Pipeline Error:** $PIPELINE_ERROR" >> analysis.md
+                    echo "**Failed Task:** $FAILED_TASK" >> analysis.md
+                    echo "**PagerDuty Incident:** $INCIDENT_KEY" >> analysis.md
+                    echo "" >> analysis.md
+                    echo "## AI Agent Analysis" >> analysis.md
+                    echo "$ANALYSIS" >> analysis.md
+                    echo "" >> analysis.md
+                    echo "## Recommended Actions" >> analysis.md
+                    echo "Based on the analysis above, please review the proposed changes and merge if appropriate." >> analysis.md
+                    echo "" >> analysis.md
+                    echo "Generated automatically by GitHub Actions workflow." >> analysis.md
+                    
+                    echo "analysis-ready=true" >> $GITHUB_OUTPUT
+
+      - name: Create PR with fix
+        if: steps.agent-response.outputs.analysis-ready == 'true'
         run: |
-          # Configure git
-          git config --local user.email "action@github.com"
-          git config --local user.name "PagerDuty Agent Bot"
+          git config --local user.email "airflow-bot@company.com"
+          git config --local user.name "Airflow Fix Bot"
           
-          # Create new branch
-          BRANCH_NAME="fix/pagerduty-$(date +%s)"
+          BRANCH_NAME="fix/airflow-failure-$(date +%s)"
           git checkout -b "$BRANCH_NAME"
           
-          # Add the proposed fix
-          git add proposed_fix.md
-          git commit -m "Auto-fix for PagerDuty incident: $INCIDENT_TITLE
-
-          Service: $SERVICE_NAME
-          Generated by PagerDuty webhook automation"
+          git add analysis.md
+          git commit -m "Auto-fix for Airflow failure: $FAILED_TASK"
           
-          # Push branch
           git push origin "$BRANCH_NAME"
           
-          # Create PR using GitHub CLI
-          gh pr create \
-            --title "🚨 Auto-fix for PagerDuty Incident: $SERVICE_NAME" \
-            --body "**Incident:** $INCIDENT_TITLE
+          PR_BODY="**Airflow Pipeline Failure Auto-Fix**
 
-          **Service:** $SERVICE_NAME
+          **Failed Task:** $FAILED_TASK
+          **Error:** $PIPELINE_ERROR
+          **PagerDuty Incident:** $INCIDENT_KEY
 
-          **Agent Analysis & Proposed Fix:**
-          $(cat proposed_fix.md)
+          **AI Agent Analysis:**
+          $(cat analysis.md)
 
-          **Incident Details:**
-          \`\`\`json
-          $ALERT_DETAILS
-          \`\`\`
+          <!-- PAGERDUTY_INCIDENT_KEY: $INCIDENT_KEY -->
 
-          This PR was automatically created in response to a PagerDuty incident." \
+          This PR was automatically generated in response to an Airflow pipeline failure."
+          
+          PR_URL=$(gh pr create \
+            --title "Auto-fix: $FAILED_TASK Pipeline Failure" \
+            --body "$PR_BODY" \
             --head "$BRANCH_NAME" \
             --base main \
-            --label "pagerduty-alert,automated"
+            --label "airflow-failure,auto-fix,pagerduty:$INCIDENT_KEY" \
+            --output json | jq -r '.url')
+          
+          echo "PR created: $PR_URL"
+          echo "PR_URL=$PR_URL" >> $GITHUB_ENV
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update PagerDuty incident
+        if: env.INCIDENT_KEY != 'test-incident-123' && env.INCIDENT_KEY != 'curl-test-123'
+        run: |
+          echo "Updating PagerDuty incident with PR link..."
+          
+          curl -s -X POST \
+            "https://events.pagerduty.com/generic/2010-04-15/create_event.json" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"service_key\": \"${{ vars.PAGERDUTY_SERVICE_KEY }}\",
+              \"incident_key\": \"$INCIDENT_KEY\",
+              \"event_type\": \"resolve\",
+              \"description\": \"Auto-fix PR created: $PR_URL\",
+              \"details\": {
+                \"pr_url\": \"$PR_URL\",
+                \"status\": \"auto_fix_generated\",
+                \"agent_analysis\": \"Analysis complete - see PR for details\"
+              }
+            }"
+          
+          echo "PagerDuty incident updated and resolved"
