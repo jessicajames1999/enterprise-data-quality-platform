@@ -49,19 +49,32 @@ jobs:
         run: |
           echo "Sending failure data to agent for analysis..."
           
+          # Create properly formatted payload using jq
+          PAYLOAD=$(jq -n \
+            --arg agent_name "${{ secrets.AGENT_ID }}" \
+            --argjson content "$ERROR_DETAILS" \
+            --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{
+              "agent_name": $agent_name,
+              "input": [
+                {
+                  "parts": [
+                    {
+                      "content_type": "application/json",
+                      "content": $content
+                    }
+                  ],
+                  "created_at": $created_at
+                }
+              ]
+            }')
+          
+          echo "Payload created, sending to agent..."
+          
           AGENT_RESPONSE=$(curl -s -X POST \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${{ secrets.AGENT_API_KEY }}" \
-            -d "{
-              \"agent_name\": \"${{ secrets.AGENT_ID }}\",
-              \"input\": [{
-                \"parts\": [{
-                  \"content_type\": \"application/json\",
-                  \"content\": $ERROR_DETAILS
-                }],
-                \"created_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
-              }]
-            }" \
+            -d "$PAYLOAD" \
             "${{ vars.AGENT_API_ENDPOINT }}" || echo '{"error": "Agent request failed"}')
           
           echo "Agent response: $AGENT_RESPONSE"
