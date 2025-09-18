@@ -1,81 +1,141 @@
-name: PagerDuty Agent PR Creator
+# Step 3: Send ticket data to agent and get response
+- name: Call agent for analysis
+  id: agent-analysis
+  run: |
+    echo "Sending ticket to agent for analysis"
+    
+    # Create ticket data JSON
+    TICKET_DATA=$(jq -n \
+      --arg ticket_id "$TICKET_ID" \
+      --arg summary "$SUMMARY" \
+      --arg description "$DESCRIPTION" \
+      --arg reporter "$REPORTER" \
+      --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      '{
+        ticket_id: $ticket_id,
+        summary: $summary,
+        description: $description,
+        reporter: $reporter,
+        timestamp: $timestamp
+      }')
+    
+    # Send to agent API
+    AGENT_RESPONSE=$(curl -s -X POST \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer $CHICORY_TOKEN" \
+      -d "{
+        \"agent_name\": \"$CHICORY_AGENT_ID\",
+        \"input\": [{
+          \"parts\": [{
+            \"content_type\": \"application/json\",
+            \"content\": $(echo "$TICKET_DATA" | jq -c .)
+          }],
+          \"created_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+        }]
+      }" \
+      https://app.chicory.ai/api/v1/runs)
+    
+    echo "Agent response: $AGENT_RESPONSE"
+    
+    # Extract run ID
+    RUN_ID=$(echo "$AGENT_RESPONSE" | jq -r '.run_id')
+    
+    if [ "$RUN_ID" = "null" ] || [ -z "$RUN_ID" ]; then
+      echo "Failed to create agent run"
+      exit 1
+    fi
+    
+    echo "Created agent run: $RUN_ID"
+    echo "Waiting for completion..."
+    
+    # Simple polling - check every 10 seconds for up to 5 minutes
+    for i in {1..30}; do
+      echo "Check $i/30"
+      
+      STATUS_RESPONSE=$(curl -s -X GET \
+        -H "Authorization: Bearer $CHICORY_TOKEN" \
+        https://app.chicory.ai/api/v1/runs/$RUN_ID)
+      
+      STATUS=$(echo "$STATUS_RESPONSE" | jq -r '.status')
+      echo "Status: $STATUS"
+      
+      if [ "$STATUS" = "completed" ]; then
+        echo "Agent completed successfully"
+        
+        # Extract the agent output
+        AGENT_OUTPUT=$(echo "$STATUS_RESPONSE" | jq -r '.output[0].parts[0].content')
+        
+        # Save raw output
+        echo "$AGENT_OUTPUT" > agent_output.txt
+        
+        # Try to extract JSON if it's wrapped in markdown
+        if echo "$AGENT_OUTPUT" | grep -q '```json'; then
+          echo "$AGENT_OUTPUT" | sed -n '/```json/,/```/p' | sed '1d;$d' > agent_result.json
+        else
+          # Assume the output is already JSON
+          echo "$AGENT_OUTPUT" > agent_result.json
+        fi
+        
+        # Validate JSON
+        if jq empty agent_result.json 2>/dev/null; then
+          echo "Valid JSON extracted"
+        else
+          echo "Invalid JSON, using fallback"
+          echo '{"validation_status":"failed","access_decision":"UNKNOWN","error":"Invalid JSON response"}' > agent_result.json
+        fi
+        
+        break
+        
+      elif [ "$STATUS" = "failed" ] || [ "$STATUS" = "error" ]; then
+        echo "Agent run failed"
+        exit 1
+      else
+        sleep 10
+      fi
+    done
+    
+    if [ "$STATUS" != "completed" ]; then
+      echo "Agent timed out"
+      exit 1
+    fi
 
-on:
-  repository_dispatch:
-    types: [pagerduty-alert]
-
-jobs:
-  create-fix-pr:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Send alert to agent and get response
-        id: agent-response
-        run: |
-          # Extract alert details from the webhook payload
-          ALERT_DETAILS='${{ toJson(github.event.client_payload) }}'
-          echo "Alert details: $ALERT_DETAILS"
-          
-          # Send to your agent API
-          AGENT_RESPONSE=$(curl -s -X POST \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${{ secrets.AGENT_API_KEY }}" \
-            -d "{
-              \"agent_id\": \"${{ vars.AGENT_ID }}\",
-              \"message\": \"Airflow pipeline failed with the following details: $ALERT_DETAILS. Please analyze the issue and provide a fix.\",
-              \"context\": \"airflow_pipeline_failure\"
-            }" \
-            "${{ vars.AGENT_API_ENDPOINT }}")
-          
-          echo "Agent response: $AGENT_RESPONSE"
-          
-          # Extract the fix content (adjust this based on your agent's response format)
-          FIX_CONTENT=$(echo "$AGENT_RESPONSE" | jq -r '.response // .message // .content')
-          
-          # Save to file for PR creation
-          echo "$FIX_CONTENT" > proposed_fix.md
-          
-          # Set outputs for next steps
-          echo "fix-available=true" >> $GITHUB_OUTPUT
-          echo "alert-description=${{ github.event.client_payload.description }}" >> $GITHUB_OUTPUT
-
-      - name: Create branch and PR
-        if: steps.agent-response.outputs.fix-available == 'true'
-        run: |
-          # Configure git
-          git config --local user.email "action@github.com"
-          git config --local user.name "PagerDuty Agent Bot"
-          
-          # Create new branch
-          BRANCH_NAME="fix/pagerduty-$(date +%s)"
-          git checkout -b "$BRANCH_NAME"
-          
-          # Add the proposed fix
-          git add proposed_fix.md
-          git commit -m "Fix for PagerDuty alert: ${{ steps.agent-response.outputs.alert-description }}"
-          
-          # Push branch
-          git push origin "$BRANCH_NAME"
-          
-          # Create PR using GitHub CLI
-          gh pr create \
-            --title "🚨 Auto-fix for PagerDuty Alert" \
-            --body "**Alert:** ${{ steps.agent-response.outputs.alert-description }}
-
-          **Agent Analysis & Proposed Fix:**
-          $(cat proposed_fix.md)
-
-          **Alert Details:**
-          \`\`\`json
-          ${{ toJson(github.event.client_payload) }}
-          \`\`\`
-
-          This PR was automatically created in response to a PagerDuty alert." \
-            --head "$BRANCH_NAME" \
-            --base main
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+# Step 4: Extract values from agent results  
+- name: Process agent results
+  id: process-results
+  run: |
+    echo "Processing agent results"
+    
+    # Extract fields with fallbacks
+    VALIDATION_STATUS=$(jq -r '.validation_status // "unknown"' agent_result.json)
+    ACCESS_DECISION=$(jq -r '.access_decision // "UNKNOWN"' agent_result.json)
+    SECURITY_NOTES=$(jq -r '.security_notes // "No security notes"' agent_result.json)
+    RECOMMENDATIONS=$(jq -r '.recommendations // "No recommendations"' agent_result.json)
+    DATASET=$(jq -r '.dataset // "unknown"' agent_result.json)
+    COLUMN=$(jq -r '.column // "unknown"' agent_result.json)
+    ACCESS_TYPE=$(jq -r '.access_type // "Read"' agent_result.json)
+    REASONING=$(jq -r '.reasoning // "No reasoning provided"' agent_result.json)
+    
+    # Check for Terraform config
+    TERRAFORM_CONFIG=$(jq -r '.terraform_config // ""' agent_result.json)
+    
+    if [ -n "$TERRAFORM_CONFIG" ] && [ "$TERRAFORM_CONFIG" != "null" ]; then
+      mkdir -p terraform/bigquery-access
+      TERRAFORM_FILE="terraform/bigquery-access/${TICKET_ID}.tf"
+      echo "$TERRAFORM_CONFIG" > "$TERRAFORM_FILE"
+      echo "HAS_TERRAFORM=true" >> $GITHUB_ENV
+      echo "TERRAFORM_FILE=$TERRAFORM_FILE" >> $GITHUB_ENV
+    else
+      echo "HAS_TERRAFORM=false" >> $GITHUB_ENV
+    fi
+    
+    # Store all variables
+    echo "VALIDATION_STATUS=$VALIDATION_STATUS" >> $GITHUB_ENV
+    echo "ACCESS_DECISION=$ACCESS_DECISION" >> $GITHUB_ENV
+    echo "SECURITY_NOTES=$SECURITY_NOTES" >> $GITHUB_ENV
+    echo "RECOMMENDATIONS=$RECOMMENDATIONS" >> $GITHUB_ENV
+    echo "DATASET=$DATASET" >> $GITHUB_ENV
+    echo "COLUMN=$COLUMN" >> $GITHUB_ENV
+    echo "ACCESS_TYPE=$ACCESS_TYPE" >> $GITHUB_ENV
+    echo "REASONING=$REASONING" >> $GITHUB_ENV
+    
+    echo "Extracted: $ACCESS_DECISION for $DATASET.$COLUMN"
