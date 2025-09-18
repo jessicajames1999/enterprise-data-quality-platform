@@ -1,0 +1,47 @@
+name: Handle Auto-Fix PR Merge
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  update-pagerduty-on-merge:
+    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'airflow-failure')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract PagerDuty incident key
+        id: extract-incident
+        run: |
+          # Extract incident key from PR body
+          INCIDENT_KEY=$(echo '${{ github.event.pull_request.body }}' | grep -o 'PAGERDUTY_INCIDENT_KEY: [^[:space:]]*' | cut -d' ' -f2)
+          if [ -z "$INCIDENT_KEY" ]; then
+            # Try extracting from labels
+            INCIDENT_KEY=$(echo '${{ toJson(github.event.pull_request.labels) }}' | jq -r '.[] | select(.name | startswith("pagerduty:")) | .name | split(":")[1]')
+          fi
+          
+          echo "INCIDENT_KEY=$INCIDENT_KEY" >> $GITHUB_ENV
+          echo "Extracted incident key: $INCIDENT_KEY"
+
+      - name: Resolve PagerDuty incident
+        if: env.INCIDENT_KEY != '' && env.INCIDENT_KEY != 'test-incident-123' && env.INCIDENT_KEY != 'curl-test-123'
+        run: |
+          echo "Resolving PagerDuty incident: $INCIDENT_KEY"
+          
+          curl -s -X POST \
+            "https://events.pagerduty.com/generic/2010-04-15/create_event.json" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"service_key\": \"${{ vars.PAGERDUTY_SERVICE_KEY }}\",
+              \"incident_key\": \"$INCIDENT_KEY\",
+              \"event_type\": \"resolve\",
+              \"description\": \"Auto-fix PR merged: ${{ github.event.pull_request.html_url }}\",
+              \"details\": {
+                \"pr_url\": \"${{ github.event.pull_request.html_url }}\",
+                \"pr_title\": \"${{ github.event.pull_request.title }}\",
+                \"merged_by\": \"${{ github.event.pull_request.merged_by.login }}\",
+                \"status\": \"resolved_by_merge\",
+                \"resolution_time\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+              }
+            }"
+          
+          echo "✅ PagerDuty incident $INCIDENT_KEY resolved via PR merge"
