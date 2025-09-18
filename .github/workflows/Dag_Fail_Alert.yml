@@ -129,122 +129,41 @@ jobs:
 
       - name: Create PR with fix
         if: steps.agent-response.outputs.analysis-ready == 'true'
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-          script: |
-            const fs = require('fs');
-            const { exec: execCommand } = require('@actions/exec');
-            
-            // Configure git
-            await execCommand('git', ['config', '--local', 'user.email', 'airflow-bot@company.com']);
-            await execCommand('git', ['config', '--local', 'user.name', 'Airflow Fix Bot']);
-            
-            // Create branch
-            const branchName = `fix/airflow-failure-${Date.now()}`;
-            await execCommand('git', ['checkout', '-b', branchName]);
-            
-            // Read agent response and extract Python code
-            let pythonCode = '';
-            try {
-              const agentData = fs.readFileSync('agent_result.json', 'utf8');
-              const agentResponse = JSON.parse(agentData);
-              
-              if (agentResponse.response) {
-                try {
-                  const responseJson = JSON.parse(agentResponse.response);
-                  if (responseJson.file_fix && responseJson.file_fix.complete_file_content) {
-                    pythonCode = responseJson.file_fix.complete_file_content;
-                    pythonCode = pythonCode.replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-                  }
-                } catch (parseError) {
-                  console.log('Could not parse nested JSON');
-                }
-              }
-              
-              if (!pythonCode) {
-                pythonCode = `# No Python code provided by agent - see analysis.md for details`;
-              }
-            } catch (error) {
-              pythonCode = '# Error extracting code from agent response';
-            }
-            
-            // Write the extracted Python code
-            fs.writeFileSync('test-pager-action.py', pythonCode);
-            
-            // Add and commit files
-            await execCommand('git', ['add', 'analysis.md', 'test-pager-action.py']);
-            await execCommand('git', ['commit', '-m', `Auto-fix for Airflow failure: ${process.env.FAILED_TASK}`]);
-            await execCommand('git', ['push', 'origin', branchName]);
-            
-            // Create enhanced PR body
-            const prBody = `## Airflow Pipeline Failure Auto-Fix
+        run: |
+          git config --local user.email "airflow-bot@company.com"
+          git config --local user.name "Airflow Fix Bot"
+          
+          BRANCH_NAME="fix/airflow-failure-$(date +%s)"
+          git checkout -b "$BRANCH_NAME"
+          
+          git add analysis.md
+          git commit -m "Auto-fix for Airflow failure: $FAILED_TASK"
+          git push origin "$BRANCH_NAME"
+          
+          PR_BODY="**Airflow Pipeline Failure Auto-Fix**
 
-            ### Incident Summary
-            - **Failed Task:** \`${process.env.FAILED_TASK}\`
-            - **Error:** ${process.env.PIPELINE_ERROR}
-            - **PagerDuty Incident:** ${process.env.INCIDENT_KEY}
-            - **Timestamp:** ${new Date().toISOString()}
+          **Failed Task:** $FAILED_TASK
+          **Error:** $PIPELINE_ERROR
+          **PagerDuty Incident:** $INCIDENT_KEY
 
-            ### Root Cause Analysis
-            Based on AI agent analysis, the pipeline failure was caused by a region validation issue where 'South America' was not included in the authorized regions whitelist.
+          **AI Agent Analysis:**
+          See analysis.md for complete details.
 
-            **Technical Details:**
-            - The validation step rejected data containing 'South America' region values
-            - This indicates either outdated configuration or unexpected data values
-            - The region whitelist validation rule needs to be updated to include the missing region
+          This PR was automatically generated in response to an Airflow pipeline failure."
+          
+          gh pr create \
+            --title "Auto-fix: $FAILED_TASK Pipeline Failure" \
+            --body "$PR_BODY" \
+            --head "$BRANCH_NAME" \
+            --base main \
+            --label "airflow-failure,auto-fix,pagerduty:$INCIDENT_KEY"
+          
+          PR_URL="https://github.com/jessicajames1999/enterprise-data-quality-platform/pull/$(gh pr list --head "$BRANCH_NAME" --json number -q '.[0].number')"
+          echo "PR_URL=$PR_URL" >> $GITHUB_ENV
+          echo "PR created: $PR_URL"
+        env:
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
 
-            ### Proposed Solution
-            The AI agent has generated an updated configuration that:
-            - Adds 'South America' to the AUTHORIZED_REGIONS list
-            - Maintains existing validation logic for other regions
-            - Preserves data integrity while allowing legitimate South America data
-
-            ### Files Modified
-            - **\`analysis.md\`** - Complete incident analysis and agent response
-            - **\`test-pager-action.py\`** - Updated Python file with corrected region whitelist
-
-            ### Validation Impact
-            - **Before:** 1 out of 4 validations failing (region_whitelist)
-            - **After:** All validations should pass with South America data
-            - **Risk Level:** Low - additive change to whitelist, no data removal
-
-            ### Next Steps
-            1. **Review** the proposed changes in the Python file
-            2. **Test** the updated validation with sample South America data  
-            3. **Deploy** if validation tests pass
-            4. **Monitor** pipeline runs for any additional region-related issues
-
-            ### Automated Actions
-            - ✅ Branch created with proposed fixes
-            - ✅ PagerDuty incident created and linked
-            - ⏳ **Merge this PR to automatically resolve the PagerDuty incident**
-
-            <!-- PAGERDUTY_INCIDENT_KEY: ${process.env.INCIDENT_KEY} -->
-
-            *This PR was automatically generated by the Airflow failure response system.*`;
-            
-            // Create PR
-            const { data: pr } = await github.rest.pulls.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: `Auto-fix: ${process.env.FAILED_TASK} Pipeline Failure`,
-              head: branchName,
-              base: 'main',
-              body: prBody
-            });
-            
-            // Add labels
-            await github.rest.issues.addLabels({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: pr.number,
-              labels: ['airflow-failure', 'auto-fix', `pagerduty:${process.env.INCIDENT_KEY}`]
-            });
-            
-            console.log(`✅ PR created: ${pr.html_url}`);
-            core.exportVariable('PR_URL', pr.html_url);
-            core.exportVariable('PR_NUMBER', pr.number);
 
       - name: Update PagerDuty incident
         if: env.INCIDENT_KEY != 'test-incident-123' && env.INCIDENT_KEY != 'curl-test-123'
