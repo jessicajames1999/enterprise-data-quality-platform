@@ -134,15 +134,15 @@ jobs:
           github-token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
           script: |
             const fs = require('fs');
-            const { exec } = require('@actions/exec');
+            const { exec: execCommand } = require('@actions/exec');
             
             // Configure git
-            await exec.exec('git', ['config', '--local', 'user.email', 'airflow-bot@company.com']);
-            await exec.exec('git', ['config', '--local', 'user.name', 'Airflow Fix Bot']);
+            await execCommand('git', ['config', '--local', 'user.email', 'airflow-bot@company.com']);
+            await execCommand('git', ['config', '--local', 'user.name', 'Airflow Fix Bot']);
             
             // Create branch
             const branchName = `fix/airflow-failure-${Date.now()}`;
-            await exec.exec('git', ['checkout', '-b', branchName]);
+            await execCommand('git', ['checkout', '-b', branchName]);
             
             // Read agent response and extract Python code
             let pythonCode = '';
@@ -173,9 +173,9 @@ jobs:
             fs.writeFileSync('test-pager-action.py', pythonCode);
             
             // Add and commit files
-            await exec.exec('git', ['add', 'analysis.md', 'test-pager-action.py']);
-            await exec.exec('git', ['commit', '-m', `Auto-fix for Airflow failure: ${process.env.FAILED_TASK}`]);
-            await exec.exec('git', ['push', 'origin', branchName]);
+            await execCommand('git', ['add', 'analysis.md', 'test-pager-action.py']);
+            await execCommand('git', ['commit', '-m', `Auto-fix for Airflow failure: ${process.env.FAILED_TASK}`]);
+            await execCommand('git', ['push', 'origin', branchName]);
             
             // Create enhanced PR body
             const prBody = `## Airflow Pipeline Failure Auto-Fix
