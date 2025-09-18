@@ -136,7 +136,7 @@ jobs:
           BRANCH_NAME="fix/airflow-failure-$(date +%s)"
           git checkout -b "$BRANCH_NAME"
           
-          git add analysis.md test-pager-action-fix.py
+          git add analysis.md
           git commit -m "Auto-fix for Airflow failure: $FAILED_TASK"
           
           git push origin "$BRANCH_NAME"
