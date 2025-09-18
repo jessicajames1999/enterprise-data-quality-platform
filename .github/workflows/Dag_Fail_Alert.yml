@@ -8,7 +8,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
-      
+
 jobs:
   create-fix-and-update-pagerduty:
     runs-on: ubuntu-latest
@@ -136,7 +136,7 @@ jobs:
           BRANCH_NAME="fix/airflow-failure-$(date +%s)"
           git checkout -b "$BRANCH_NAME"
           
-          git add analysis.md
+          git add analysis.md test-pager-action-fix.py
           git commit -m "Auto-fix for Airflow failure: $FAILED_TASK"
           
           git push origin "$BRANCH_NAME"
@@ -165,7 +165,7 @@ jobs:
           echo "PR created: $PR_URL"
           echo "PR_URL=$PR_URL" >> $GITHUB_ENV
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
 
       - name: Update PagerDuty incident
         if: env.INCIDENT_KEY != 'test-incident-123' && env.INCIDENT_KEY != 'curl-test-123'
