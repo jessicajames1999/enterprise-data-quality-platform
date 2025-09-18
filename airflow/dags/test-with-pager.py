@@ -247,6 +247,7 @@ validate_transformed = PythonOperator(
     task_id='validate_transformed_data',
     python_callable=validate_transformed_tables,
     provide_context=True,
+    retries=0,  # No retries for this specific task
     dag=dag
 )
 
