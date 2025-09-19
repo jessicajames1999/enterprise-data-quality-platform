@@ -246,8 +246,8 @@ jobs:
             -d "{
               \"service_key\": \"${{ vars.PAGERDUTY_SERVICE_KEY }}\",
               \"incident_key\": \"$INCIDENT_KEY\",
-              \"event_type\": \"acknowledge\",
-              \"description\": \"Auto-fix PR pending review: $PR_URL\",
+              \"event_type\": \"resolve\",
+              \"description\": \"Auto-fix PR created: $PR_URL\",
               \"details\": {
                 \"pr_url\": \"$PR_URL\",
                 \"status\": \"auto_fix_generated\",
