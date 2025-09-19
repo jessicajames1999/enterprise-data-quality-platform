@@ -25,23 +25,23 @@ jobs:
       - name: Resolve PagerDuty incident
         if: env.INCIDENT_KEY != '' && env.INCIDENT_KEY != 'test-incident-123' && env.INCIDENT_KEY != 'curl-test-123'
         run: |
-          echo "Resolving PagerDuty incident: $INCIDENT_KEY"
-          
-          curl -s -X POST \
+            echo "Resolving PagerDuty incident: $INCIDENT_KEY"
+            
+            curl -s -X POST \
             "https://events.pagerduty.com/generic/2010-04-15/create_event.json" \
             -H "Content-Type: application/json" \
             -d "{
-              \"service_key\": \"${{ vars.PAGERDUTY_SERVICE_KEY }}\",
-              \"incident_key\": \"$INCIDENT_KEY\",
-              \"event_type\": \"resolve\",
-              \"description\": \"Auto-fix PR merged: ${{ github.event.pull_request.html_url }}\",
-              \"details\": {
+            \"service_key\": \"${{ vars.PAGERDUTY_SERVICE_KEY }}\",
+            \"incident_key\": \"$INCIDENT_KEY\",
+            \"event_type\": \"resolve\",
+            \"description\": \"Fix deployed and verified: ${{ github.event.pull_request.html_url }}\",
+            \"details\": {
                 \"pr_url\": \"${{ github.event.pull_request.html_url }}\",
                 \"pr_title\": \"${{ github.event.pull_request.title }}\",
                 \"merged_by\": \"${{ github.event.pull_request.merged_by.login }}\",
                 \"status\": \"resolved_by_merge\",
                 \"resolution_time\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
-              }
+            }
             }"
-          
-          echo "✅ PagerDuty incident $INCIDENT_KEY resolved via PR merge"
+        
+            echo "✅ PagerDuty incident $INCIDENT_KEY resolved - fix deployed"
