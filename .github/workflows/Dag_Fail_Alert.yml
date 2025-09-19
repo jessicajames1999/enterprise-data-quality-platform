@@ -108,6 +108,7 @@ jobs:
             done
           else
             ANALYSIS="Failed to start agent run"
+            echo "$ANALYSIS" > agent_result.json
           fi
           
           cat << 'ANALYSIS_EOF' > analysis.md
@@ -180,8 +181,6 @@ jobs:
           echo "Extracted root cause: $ROOT_CAUSE"
 
 
-
-
       - name: Create PR with fix
         if: steps.agent-response.outputs.analysis-ready == 'true'
         run: |
@@ -194,47 +193,35 @@ jobs:
           git add analysis.md
           git commit -m "Auto-fix for Airflow failure: $FAILED_TASK"
           git push origin "$BRANCH_NAME"
+
+          # Add debug output here
+          echo "Debug - ROOT_CAUSE: $ROOT_CAUSE"
+          echo "Debug - FILENAME: $FILENAME"
+          echo "Debug - TECHNICAL_DETAILS: $TECHNICAL_DETAILS"
+          echo "Debug - CHANGES_MADE: $CHANGES_MADE"
           
-          # Parse the agent response for readable format
-          if [ -f "agent_result.json" ]; then
-            # Extract key information from agent response
-            ROOT_CAUSE=$(echo "$ANALYSIS" | jq -r '.response' | jq -r '.root_cause_analysis.primary_issue // "Analysis not available"' 2>/dev/null || echo "Analysis parsing failed")
-            TECHNICAL_DETAILS=$(echo "$ANALYSIS" | jq -r '.response' | jq -r '.root_cause_analysis.technical_details // "Technical details not available"' 2>/dev/null || echo "Technical details parsing failed")
-            
-            # Create formatted PR body
-            PR_BODY="## Airflow Pipeline Failure Auto-Fix
-
-            **Failed Task:** $FAILED_TASK
-            **Error:** $PIPELINE_ERROR
-            **PagerDuty Incident:** $INCIDENT_KEY
-
-            ### Root Cause Analysis
-            $ROOT_CAUSE
-
-            **Technical Details:**
-            $TECHNICAL_DETAILS
-
-            ### Proposed Fix
-            **File:** $FILENAME
-            **Changes:** $CHANGES_MADE
-
-            ### Files Modified
-            - **analysis.md** - Complete incident analysis and agent response
-
-            This PR was automatically generated in response to an Airflow pipeline failure."
-            
-          # Fallback if no agent result
-          PR_BODY="**Airflow Pipeline Failure Auto-Fix**
+          # Use the environment variables set by the processing step
+          PR_BODY="## Airflow Pipeline Failure Auto-Fix
 
           **Failed Task:** $FAILED_TASK
           **Error:** $PIPELINE_ERROR
           **PagerDuty Incident:** $INCIDENT_KEY
 
-          **AI Agent Analysis:**
-          See analysis.md for complete details.
+          ### Root Cause Analysis
+          $ROOT_CAUSE
+
+          **Technical Details:**
+          $TECHNICAL_DETAILS
+
+          ### Proposed Fix
+          **File:** $FILENAME
+          **Changes:** $CHANGES_MADE
+
+          ### Files Modified
+          - **analysis.md** - Complete incident analysis and agent response
 
           This PR was automatically generated in response to an Airflow pipeline failure."
-          fi 
+          
           gh pr create \
             --title "Auto-fix: $FAILED_TASK Pipeline Failure" \
             --body "$PR_BODY" \
@@ -247,7 +234,6 @@ jobs:
           echo "PR created: $PR_URL"
         env:
           GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-
 
       - name: Update PagerDuty incident
         if: env.INCIDENT_KEY != 'test-incident-123' && env.INCIDENT_KEY != 'curl-test-123'
