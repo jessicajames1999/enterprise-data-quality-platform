@@ -220,6 +220,8 @@ jobs:
           ### Files Modified
           - **analysis.md** - Complete incident analysis and agent response
 
+          <!-- PAGERDUTY_INCIDENT_KEY: $INCIDENT_KEY -->
+
           This PR was automatically generated in response to an Airflow pipeline failure."
           
           gh pr create \
