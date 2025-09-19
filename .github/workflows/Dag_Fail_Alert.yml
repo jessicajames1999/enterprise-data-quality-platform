@@ -156,7 +156,7 @@ jobs:
             --body "$PR_BODY" \
             --head "$BRANCH_NAME" \
             --base main \
-            --label "airflow-failure,auto-fix,pagerduty:$INCIDENT_KEY"
+            --label "airflow-failure,auto-fix,pagerduty-$INCIDENT_KEY"
           
           PR_URL="https://github.com/jessicajames1999/enterprise-data-quality-platform/pull/$(gh pr list --head "$BRANCH_NAME" --json number -q '.[0].number')"
           echo "PR_URL=$PR_URL" >> $GITHUB_ENV
