@@ -92,15 +92,20 @@ def send_alert_and_notify_agent(error_details):
         
         if response.status_code in [200, 201]:
             print("Successfully sent failure details to Chicory agent")
+            print(f"Response status: {response.status_code}")
+            print(f"Response headers: {dict(response.headers)}")
+            print(f"Raw response text: {response.text}")
+            
             try:
                 response_data = response.json()
+                print(f"Parsed JSON keys: {list(response_data.keys())}")
                 run_id = response_data.get('run_id')
                 if run_id:
                     print(f"Chicory agent run ID: {run_id}")
                 else:
-                    print("No run ID returned from Chicory agent")
+                    print("No run ID found in response")
             except Exception as e:
-                print(f"Could not parse agent response for run ID: {str(e)}")
+                print(f"JSON parsing error: {str(e)}")
         else:
             print(f"Failed to send to Chicory agent: {response.status_code}")
             
