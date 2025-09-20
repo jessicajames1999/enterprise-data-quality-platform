@@ -254,7 +254,7 @@ def validate_transformed_tables(**context):
 
 # DAG definition
 dag = DAG(
-    'test-pager-action',
+    'pager-workflow-1',
     default_args={
         'owner': 'data-team',
         'start_date': datetime(2024, 1, 1),
