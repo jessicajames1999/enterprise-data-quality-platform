@@ -81,7 +81,7 @@ def send_alert_and_notify_agent(error_details):
         }
         
         response = requests.post(
-            "https://app.chicory.ai/api/v1/runs",
+            "https://app.chicory.ai/api/v1/projects/a19ef3ec-cd8f-4fd0-8440-085454810c6b/runs",
             headers={
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {agent_token}"
