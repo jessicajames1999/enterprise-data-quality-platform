@@ -70,12 +70,36 @@ job1_enriched_sales = GlueJobOperator(
     dag=dag
 )
 
-# Notify agent after job completes
+# Job 2: Clean Customer Orders
+job2_customer_orders = GlueJobOperator(
+    task_id='job2_customer_orders',
+    job_name='Clean-Customer-Orders',
+    region_name='us-west-2',
+    aws_conn_id='aws_default',
+    wait_for_completion=True,
+    dag=dag
+)
+
+# Job 3: Sales Summary (depends on Job 1)
+job3_sales_summary = GlueJobOperator(
+    task_id='job3_sales_summary',
+    job_name='Sales-Summary',
+    region_name='us-west-2',
+    aws_conn_id='aws_default',
+    wait_for_completion=True,
+    dag=dag
+)
+
+# Notify agent after all jobs complete
 notify_agent = PythonOperator(
     task_id='notify_agent',
     python_callable=notify_agent_pipeline_complete,
     dag=dag
 )
 
-# Pipeline flow
-job1_enriched_sales >> notify_agent
+# Pipeline flow:
+# Job 1 → Job 3 ─┐
+#                ├→ Notify Agent
+# Job 2 ─────────┘
+job1_enriched_sales >> job3_sales_summary
+[job3_sales_summary, job2_customer_orders] >> notify_agent
