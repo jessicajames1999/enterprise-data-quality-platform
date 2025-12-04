@@ -8,8 +8,8 @@ import requests
 def notify_agent_pipeline_complete(**context):
     """Send pipeline completion to Chicory agent"""
     
-    agent_token = Variable.get("chicory_agent_token")
-    agent_name = Variable.get("chicory_agent_name")
+    agent_token = Variable.get("api_token_anomaly")
+    agent_name = Variable.get("agentid_anomaly")
     
     message = "Glue ETL Pipeline completed successfully. Please analyze the final reports in s3://adventureworks-demo-gilead/gold/"
     
@@ -29,7 +29,7 @@ def notify_agent_pipeline_complete(**context):
     }
     
     response = requests.post(
-        "https://app.chicory.ai/api/v1/projects/247190cd-998a-47f4-97ef-2189be433448/runs",
+        "https://app.chicory.ai/api/v1/projects/a19ef3ec-cd8f-4fd0-8440-085454810c6b/runs",
         headers={
             "Content-Type": "application/json",
             "Authorization": f"Bearer {agent_token}"
@@ -70,34 +70,12 @@ job1_enriched_sales = GlueJobOperator(
     dag=dag
 )
 
-# Job 2: Clean Customer Orders
-job2_customer_orders = GlueJobOperator(
-    task_id='job2_customer_orders',
-    job_name='Clean-Customer-Orders',
-    region_name='us-west-2',
-    aws_conn_id='aws_default',
-    wait_for_completion=True,
-    dag=dag
-)
-
-# Job 3: Sales Summary
-job3_sales_summary = GlueJobOperator(
-    task_id='job3_sales_summary',
-    job_name='Sales-Summary',
-    region_name='us-west-2',
-    aws_conn_id='aws_default',
-    wait_for_completion=True,
-    dag=dag
-)
-
-# Notify agent after all jobs complete
+# Notify agent after job completes
 notify_agent = PythonOperator(
     task_id='notify_agent',
     python_callable=notify_agent_pipeline_complete,
     dag=dag
 )
 
-# Pipeline flow:
-# Job 1 → Job 3 → Notify Agent
-# Job 2 → Notify Agent
-[job1_enriched_sales >> job3_sales_summary, job2_customer_orders] >> notify_agent
+# Pipeline flow
+job1_enriched_sales >> notify_agent
