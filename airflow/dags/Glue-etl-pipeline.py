@@ -29,7 +29,7 @@ def notify_agent_pipeline_complete(**context):
     }
     
     response = requests.post(
-        "https://app.chicory.ai/api/v1/projects/a19ef3ec-cd8f-4fd0-8440-085454810c6b/runs",
+        "https://app.chicory.ai/api/v1/projects/0d8bdfd5-79d5-470a-893c-35fbf2796ff3/runs",
         headers={
             "Content-Type": "application/json",
             "Authorization": f"Bearer {agent_token}"
