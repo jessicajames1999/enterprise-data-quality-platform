@@ -11,7 +11,7 @@ def notify_agent_pipeline_complete(**context):
     agent_token = Variable.get("api_token_anomaly")
     agent_name = Variable.get("agentid_anomaly")
     
-    message = "Glue ETL Pipeline completed successfully. Please analyze the final reports in s3://adventureworks-demo-gilead/gold/"
+    message = "Glue ETL Pipeline completed successfully. Validate data quality in s3://awsgilead/gold/ and investigate any anomalies found."
     
     agent_payload = {
         "agent_name": agent_name,
@@ -47,43 +47,63 @@ def notify_agent_pipeline_complete(**context):
 
 # DAG definition
 dag = DAG(
-    'glue-etl-pipeline',
+    'pharma-etl-pipeline',
     default_args={
         'owner': 'data-team',
         'start_date': datetime(2024, 1, 1),
         'retries': 1,
         'retry_delay': timedelta(minutes=2)
     },
-    description='Run 3 Glue ETL jobs then notify agent for validation',
+    description='Run 5 Pharma ETL jobs then notify agent for validation',
     schedule_interval=None,
     catchup=False,
-    tags=['glue', 'etl', 'adventureworks']
+    tags=['glue', 'etl', 'pharma']
 )
 
-# Job 1: Enriched Sales
-job1_enriched_sales = GlueJobOperator(
-    task_id='job1_enriched_sales',
-    job_name='Enriched-Sales',
+# Job 1: Product Mastering
+job1_product_mastering = GlueJobOperator(
+    task_id='job1_product_mastering',
+    job_name='Product-Mastering',
     region_name='us-west-2',
     aws_conn_id='aws_default',
     wait_for_completion=True,
     dag=dag
 )
 
-# Job 2: Clean Customer Orders
-job2_customer_orders = GlueJobOperator(
-    task_id='job2_customer_orders',
-    job_name='Clean-Customer-Orders',
+# Job 2: HCP to Brick
+job2_hcp_brick = GlueJobOperator(
+    task_id='job2_hcp_brick',
+    job_name='HCP-Brick',
     region_name='us-west-2',
     aws_conn_id='aws_default',
     wait_for_completion=True,
     dag=dag
 )
 
-# Job 3: Sales Summary (depends on Job 1)
-job3_sales_summary = GlueJobOperator(
-    task_id='job3_sales_summary',
-    job_name='Sales-Summary',
+# Job 3: Brick to Territory
+job3_brick_territory = GlueJobOperator(
+    task_id='job3_brick_territory',
+    job_name='Brick-Territory',
+    region_name='us-west-2',
+    aws_conn_id='aws_default',
+    wait_for_completion=True,
+    dag=dag
+)
+
+# Job 4: Sales Enrichment (depends on Jobs 1, 2, 3)
+job4_sales_enrichment = GlueJobOperator(
+    task_id='job4_sales_enrichment',
+    job_name='Sales-Enrichment',
+    region_name='us-west-2',
+    aws_conn_id='aws_default',
+    wait_for_completion=True,
+    dag=dag
+)
+
+# Job 5: Beta Layer Validation (depends on Job 4)
+job5_beta_layer = GlueJobOperator(
+    task_id='job5_beta_layer',
+    job_name='Beta-Layer',
     region_name='us-west-2',
     aws_conn_id='aws_default',
     wait_for_completion=True,
@@ -98,8 +118,12 @@ notify_agent = PythonOperator(
 )
 
 # Pipeline flow:
-# Job 1 → Job 3 ─┐
-#                ├→ Notify Agent
-# Job 2 ─────────┘
-job1_enriched_sales >> job3_sales_summary
-[job3_sales_summary, job2_customer_orders] >> notify_agent
+# Job 1 (Product Mastering) ──┐
+# Job 2 (HCP Brick) ──────────┼──> Job 4 (Sales Enrichment) ──> Job 5 (Beta Layer) ──> Notify Agent
+# Job 3 (Brick Territory) ────┘
+
+job1_product_mastering >> job4_sales_enrichment
+job2_hcp_brick >> job4_sales_enrichment
+job3_brick_territory >> job4_sales_enrichment
+job4_sales_enrichment >> job5_beta_layer
+job5_beta_layer >> notify_agent
