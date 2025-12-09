@@ -11,7 +11,7 @@ def notify_agent_pipeline_complete(**context):
     agent_token = Variable.get("api_token_anomaly")
     agent_name = Variable.get("agentid_anomaly")
     
-    message = "Glue ETL Pipeline completed successfully. Validate data quality in s3://awsgilead/gold/ and investigate any anomalies found."
+    message = "Glue ETL Pipeline completed successfully. Please validate the data quality  and investigate any anomalies."
     
     agent_payload = {
         "agent_name": agent_name,
